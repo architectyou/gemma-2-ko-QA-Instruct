@@ -1,10 +1,10 @@
 import os
 import torch
-from transformers import GemmaTokenizerFast, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 def load_model_and_tokenizer(model_id):
     try:
-        tokenizer = GemmaTokenizerFast.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
@@ -43,9 +43,18 @@ def generate_response(model, tokenizer, instruction):
     except Exception as e:
         print(f"텍스트 생성 중 오류 발생: {e}")
         return None
+    
+def generate_answer(model, tokenizer, context, question):
+    prompt = f"Context: {context}\nQuestion: {question}\nAnswer:"
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        outputs = model.generate(**inputs, max_length=500, num_return_sequences=1, temperature=0.56)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 def main():
-    model_id = "/data/test/fine_tuned_legal_model_merged"
+    model_id = "/data/test/0920_merged"
+    
+    origin_model = "/data/gguf_models/ko-gemma-2-9b-it"
     
     tokenizer, model = load_model_and_tokenizer(model_id)
     if tokenizer is None or model is None:
@@ -56,11 +65,20 @@ def main():
     instruction = "서울의 유명한 관광 코스를 만들어줄래?"
     response = generate_response(model, tokenizer, instruction)
     
+    # # 테스트
+    # test_context = "상법 제321조 제2항은 회사 성립시의 발기인의 납입담보책임에 관하여 규정하고 있습니다."
+    # test_question = "회사성립의 경우 발기인의 납입담보책임에 관해서 설명해 주십시오."
+
+    
+    # response = generate_answer(model, tokenizer, test_context, test_question)
+    
     if response:
         print("생성된 응답:")
         print(response)
     else:
         print("응답 생성에 실패했습니다.")
+        
+
 
 if __name__ == "__main__":
     main()

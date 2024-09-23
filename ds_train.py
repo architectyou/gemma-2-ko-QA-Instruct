@@ -1,12 +1,27 @@
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
+from transformers import (
+    AutoTokenizer, 
+    AutoModelForCausalLM, 
+    TrainingArguments, 
+    Trainer,
+)
 from datasets import load_dataset, Dataset
-import os
-import json
+import os, torch, json, wandb, subprocess
 from sklearn.model_selection import train_test_split
-from peft import get_peft_model, LoraConfig, TaskType
-import wandb
-import subprocess
+from peft import (
+    get_peft_model, 
+    LoraConfig, 
+    TaskType,
+)
+from trl import SFTTrainer, setup_chat_format
+
+#hf login
+# from huggingface_hub import login
+# from kaggle_secrets import UserSecretsClient
+# user_secrets = UserSecretsClient()
+
+# hf_token = user_secrets.get_secret("HUGGINGFACE_TOKEN")
+# login(token=hf_token)
+
 
 # wandb 초기화
 try:
@@ -16,14 +31,23 @@ except subprocess.CalledProcessError:
 
 wandb.init(project="legal-model-finetuning", name="gemma-2-9b-lora-bf16-improved")
 
+# load model and tokenizer
+# if torch.cuda.get_device_capability()[0] >= 8:
+#     !pip install -qqq flash-attn
+#     torch_dtype = torch.bfloat16
+#     attn_implementation = "flash_attention_2"
+# else : 
+#     torch_dtype = torch.float16
+#     attn_implementation = "eager"
+
 # 모델과 토크나이저 로드
 model_name = "/data/gguf_models/ko-gemma-2-9b-it/"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code = True)
 model = AutoModelForCausalLM.from_pretrained(
     model_name, 
     attn_implementation='eager', 
     torch_dtype=torch.bfloat16,
-    use_cache=False  # 그래디언트 체크포인팅과 호환되도록 설정
+    use_cache=False
 )
 
 # LoRA 설정
@@ -32,10 +56,13 @@ peft_config = LoraConfig(
     inference_mode=False,
     r=8,
     lora_alpha=32,
-    lora_dropout=0.1,
-    target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    lora_dropout=0.05,
+    target_modules=["q_proj", "v_proj"],
+    bias="none",
+    modules_to_save=["embed_tokens", "lm_head"]
 )
 
+model, tokenizer = setup_chat_format(model, tokenizer)
 # LoRA 모델 생성
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
@@ -73,21 +100,20 @@ val_dataset = create_dataset(val_data)
 
 # 데이터 전처리 함수
 def preprocess_function(examples):
-    max_length = 512  # 또는 모델에 맞는 적절한 길이
+    max_length = 8192 
+    
     prompts = [f"Context: {context}\nQuestion: {question}\nAnswer:" 
                for context, question in zip(examples["context"], examples["question"])]
     
     inputs = tokenizer(prompts, padding=False, truncation=True, max_length=max_length)
     labels = tokenizer(examples["answer"], padding=False, truncation=True, max_length=max_length)
     
-    # 입력과 라벨의 길이를 맞춤
     for i in range(len(inputs["input_ids"])):
-        input_length = len(inputs["input_ids"][i])
-        label_length = len(labels["input_ids"][i])
-        if input_length > label_length:
-            labels["input_ids"][i] += [-100] * (input_length - label_length)
-        elif input_length < label_length:
-            labels["input_ids"][i] = labels["input_ids"][i][:input_length]
+        if len(inputs["input_ids"][i]) > len(labels["input_ids"][i]):
+            labels["input_ids"][i] += [-100] * (len(inputs["input_ids"][i]) - len(labels["input_ids"][i]))
+        else:
+            inputs["input_ids"][i] += [tokenizer.pad_token_id] * (len(labels["input_ids"][i]) - len(inputs["input_ids"][i]))
+            inputs["attention_mask"][i] += [0] * (len(labels["input_ids"][i]) - len(inputs["attention_mask"][i]))
     
     inputs["labels"] = labels["input_ids"]
     return inputs
@@ -100,22 +126,22 @@ val_tokenized = Dataset.from_dict(val_dataset).map(preprocess_function, batched=
 # 훈련 인자 설정
 training_args = TrainingArguments(
     output_dir="./results",
-    num_train_epochs=3,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=4,
+    num_train_epochs=1,
+    per_device_train_batch_size=1,
+    per_device_eval_batch_size=1,
     gradient_accumulation_steps=4,
-    warmup_steps=500,
+    warmup_steps=10,
     weight_decay=0.01,
     logging_dir="./logs",
-    logging_steps=10,
+    logging_steps=11,
     eval_strategy="steps",
-    eval_steps=500,
-    save_steps=1000,
-    learning_rate=1e-4,
+    eval_steps=0.2,
+    save_steps=0.4,
+    learning_rate=2e-4,
     bf16=True,
     gradient_checkpointing=True,
     gradient_checkpointing_kwargs={"use_reentrant": False},
-    deepspeed="ds_config.json",  # DeepSpeed 설정 파일 경로
+    # deepspeed="ds_config.json",  # DeepSpeed 설정 파일 경로
     report_to="wandb",
     run_name="gemma-2-9b-lora-bf16-improved",
 )
@@ -172,7 +198,7 @@ except Exception as e:
     raise
 
 # 모델 저장
-trainer.save_model("./fine_tuned_legal_model_lora")
+trainer.model.save_pretrained("./fine_tuned_legal_model_lora")
 
 # LoRA 모델 병합 및 전체 모델 저장 (선택사항)
 merged_model = model.merge_and_unload()
