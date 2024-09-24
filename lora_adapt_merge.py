@@ -1,25 +1,19 @@
-# pip install bitsandbytes
 import pdb
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
 
-model_id = "/data/test/0924_merged-1"
-# model_id = "/data/gguf_models/ko-gemma-2-9b-it"
-# quantization_config_8bit = BitsAndBytesConfig(load_in_8bit=True)
-# quantization_config_4bit = BitsAndBytesConfig(load_in_4bit=True)
 
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-model = AutoModelForCausalLM.from_pretrained(
-    model_id,
-    torch_dtype=torch.bfloat16,
-    device_map="auto",
-    # quantization_config=quantization_config_8bit,
-    # quantization_config=quantization_config_4bit,
-    # low_cpu_mem_usage=True,
-)
+peft_model_id = "/data/test/fine_tuned_legal_model_lora"
+base_model_id = "/data/gguf_models/ko-gemma-2-9b-it"
 
-model.eval()
-# instruction = "서울의 유명한 관광 코스를 만들어줄래?"
+base_model = AutoModelForCausalLM.from_pretrained(base_model_id)
+
+# lora model load
+model = PeftModel.from_pretrained(base_model, peft_model_id)
+model.merge_and_unload()
+
+tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+
 prompt = """
 Context: 잔고증명서
 상법 제318조 제1항과 제3항은 납입금 보관자의 증명과 책임과 관련하여 다음과 같이 규정하고 있습니다:
@@ -51,7 +45,7 @@ outputs = model.generate(
     do_sample=True,
     temperature=0.6,
     top_p=0.9,
-    repetition_penalty=1.2,
+    # repetition_penalty=1.2,
     # no_repeat_ngram_size=2
 )
 

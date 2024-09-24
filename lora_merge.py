@@ -7,7 +7,7 @@ import pdb
 # 원본 모델 경로 (fine-tuning 전 모델)
 base_model_path = "/data/gguf_models/ko-gemma-2-9b-it"
 # Fine-tuned 모델 경로
-model_name = "/data/test/results/checkpoint-1000"
+model_name = "/data/test/fine_tuned_legal_model_lora"
 
 # Fine-tuned 모델(PEFT 모델) 설정 로드
 peft_config = PeftConfig.from_pretrained(model_name)
@@ -30,7 +30,7 @@ merged_model = model.merge_and_unload()
 print(f"Base model vocab size after resizing: {merged_model.config.vocab_size}")
 
 # 병합된 모델 저장
-output_dir = "./0923_merged-2"
+output_dir = "./0924_merged-1"
 merged_model.save_pretrained(output_dir, safe_serialization=True)
 tokenizer.save_pretrained(output_dir)
 

@@ -3,9 +3,9 @@ import pdb
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-def load_model_and_tokenizer(model_id, origin_model):
+def load_model_and_tokenizer(model_id):
     try:
-        tokenizer = AutoTokenizer.from_pretrained(origin_model)
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
@@ -79,10 +79,10 @@ def generate_answer(model, tokenizer, context, question):
 
 def main():
     
-    model_id = "/data/test/0923_merged"
+    model_id = "/data/test/0924_merged"
     origin_model = "/data/gguf_models/ko-gemma-2-9b-it"
     
-    tokenizer, model = load_model_and_tokenizer(model_id, origin_model)
+    tokenizer, model = load_model_and_tokenizer(model_id)
     # orig_tokenizer, orig_model = load_model_and_tokenizer(origin_model)
     if tokenizer is None or model is None:
         return
@@ -91,7 +91,7 @@ def main():
 
     # test_tokenizer(tokenizer)
 
-    instruction = "서울의 유명한 관광 코스를 만들어줄래?"
+    # instruction = "서울의 유명한 관광 코스를 만들어줄래?"
     # response = generate_response(model, tokenizer, instruction)
     
     # # 테스트

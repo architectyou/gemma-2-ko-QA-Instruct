@@ -113,6 +113,7 @@ def preprocess_function(examples):
         
         # 레이블 인코딩
         encoded_label = tokenizer(answer, max_length=max_length, padding="max_length", truncation=True)
+        pdb.set_trace()
         
         # 레이블에 대해 -100으로 패딩
         encoded_label["input_ids"] = [-100 if token == tokenizer.pad_token_id else token for token in encoded_label["input_ids"]]
@@ -139,9 +140,9 @@ val_tokenized = Dataset.from_dict(val_dataset).map(preprocess_function, batched=
 training_args = TrainingArguments(
     output_dir="./results",
     num_train_epochs=1,
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,
-    gradient_accumulation_steps=4,
+    per_device_train_batch_size=2,
+    per_device_eval_batch_size=2,
+    gradient_accumulation_steps=8,
     optim="paged_adamw_32bit",
     eval_strategy="steps",
     eval_steps=0.1,
@@ -149,11 +150,11 @@ training_args = TrainingArguments(
     logging_steps=11,
     warmup_steps=10,
     logging_strategy="steps",
-    learning_rate=2e-4,
+    learning_rate=1e-7,
     group_by_length=True,
     bf16=True,
     # report_to="wandb",
-    run_name="gemma-2-9b-lora-bf16-0923",
+    run_name="gemma-2-9b-lora-bf16-0924",
 )
 
 # Wandb에 하이퍼파라미터 로깅
