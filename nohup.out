@@ -1,0 +1,21 @@
+wandb: ERROR Find detailed error logs at: /tmp/debug-cli.jovyan.log
+Error: api_key not configured (no-tty). call wandb login [your_api_key]
+wandb: Using wandb-core as the SDK backend. Please refer to https://wandb.me/wandb-core for more information.
+Wandb 로그인에 실패했습니다. 수동으로 로그인해주세요.
+wandb: ERROR api_key not configured (no-tty). call wandb.login(key=[your_api_key])
+Traceback (most recent call last):
+  File "/home/jovyan/Virnect/ai_dep/gemma-2-ko-QA-Instruct/train.py", line 25, in <module>
+    wandb.init(project="legal-model-finetuning", name="gemma-2-9b-lora-bf16-0924-1")
+  File "/home/jovyan/Virnect/miniconda3/envs/llm_tuning/lib/python3.10/site-packages/wandb/sdk/wandb_init.py", line 1255, in init
+    wandb._sentry.reraise(e)
+  File "/home/jovyan/Virnect/miniconda3/envs/llm_tuning/lib/python3.10/site-packages/wandb/analytics/sentry.py", line 155, in reraise
+    raise exc.with_traceback(sys.exc_info()[2])
+  File "/home/jovyan/Virnect/miniconda3/envs/llm_tuning/lib/python3.10/site-packages/wandb/sdk/wandb_init.py", line 1240, in init
+    wi.setup(kwargs)
+  File "/home/jovyan/Virnect/miniconda3/envs/llm_tuning/lib/python3.10/site-packages/wandb/sdk/wandb_init.py", line 303, in setup
+    wandb_login._login(
+  File "/home/jovyan/Virnect/miniconda3/envs/llm_tuning/lib/python3.10/site-packages/wandb/sdk/wandb_login.py", line 347, in _login
+    wlogin.prompt_api_key()
+  File "/home/jovyan/Virnect/miniconda3/envs/llm_tuning/lib/python3.10/site-packages/wandb/sdk/wandb_login.py", line 281, in prompt_api_key
+    raise UsageError("api_key not configured (no-tty). call " + directive)
+wandb.errors.UsageError: api_key not configured (no-tty). call wandb.login(key=[your_api_key])

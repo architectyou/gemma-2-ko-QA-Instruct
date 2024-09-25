@@ -161,6 +161,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+#h100 directory
 .env
 dataset/
 pdf_files/
@@ -180,3 +181,6 @@ fine_tuned_legal_model_merged_0923_1/
 0923_merged-3/
 0924_merged/
 0924_merged-1/
+
+#100 directory
+models/

@@ -1,7 +1,7 @@
-import pdb
 from transformers import (
     AutoTokenizer, 
-    AutoModelForCausalLM, 
+    AutoModelForCausalLM,
+    BitsAndBytesConfig,
     TrainingArguments,
     pipeline
 )
@@ -9,12 +9,16 @@ from datasets import load_dataset, Dataset
 import os, torch, json, wandb, subprocess
 from sklearn.model_selection import train_test_split
 from peft import (
-    get_peft_model, 
-    LoraConfig, 
-    TaskType,
+    LoraConfig,
+    PeftModel,
+    prepare_model_for_kbit_training,
+    get_peft_model,
 )
+import bitsandbytes as bnb
 import torch.nn as nn
 from trl import SFTTrainer, setup_chat_format
+
+import pdb
 
 # wandb 로그인
 try:
@@ -22,48 +26,62 @@ try:
 except subprocess.CalledProcessError:
     print("Wandb 로그인에 실패했습니다. 수동으로 로그인해주세요.")
 
-wandb.init(project="legal-model-finetuning", name="gemma-2-9b-lora-bf16-0923")
+wandb.init(project="legal-model-finetuning", name="gemma-2-9b-lora-bf16-0925")
 
 # 모델과 토크나이저 로드
-base_model = "/data/gguf_models/ko-gemma-2-9b-it/"
-tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code = True)
-model = AutoModelForCausalLM.from_pretrained(
-    base_model, 
-    torch_dtype=torch.bfloat16,
-    device_map="auto",
-    attn_implementation='eager',
+base_model = "models/ko-gemma-2-9b-it"
+
+#------------------------------model load---------------------------------
+# QLoRA config
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
 )
 
+# Load model
+model = AutoModelForCausalLM.from_pretrained(
+    base_model,
+    quantization_config=bnb_config,
+    device_map="auto",
+    attn_implementation="eager"
+)
+
+# Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+#-------------------------------------------------------------------------------------
 def find_all_linear_names(model):
+    cls = bnb.nn.Linear4bit
     lora_module_names = set()
     for name, module in model.named_modules():
-        if isinstance(module, nn.Linear):
+        if isinstance(module, cls):
             names = name.split('.')
             lora_module_names.add(names[0] if len(names) == 1 else names[-1])
-    if 'lm_head' in lora_module_names:
+    if 'lm_head' in lora_module_names:  # needed for 16 bit
         lora_module_names.remove('lm_head')
     return list(lora_module_names)
 
 modules = find_all_linear_names(model)
-# LoRA 설정
+
+# LoRA config
 peft_config = LoraConfig(
-    task_type=TaskType.CAUSAL_LM,
-    inference_mode=False,
-    r=16,
+    r=8,
     lora_alpha=32,
     lora_dropout=0.05,
     bias="none",
-    target_modules=modules,
+    task_type="CAUSAL_LM",
+    target_modules=modules
 )
 
-# model, tokenizer = setup_chat_format(model, tokenizer)
-# LoRA 모델 생성
+model, tokenizer = setup_chat_format(model, tokenizer)
 model = get_peft_model(model, peft_config)
-model.print_trainable_parameters()
 
-# 모델을 명시적으로 훈련 모드로 설정
-model.train()
-
+# # test
+# for name, param in model.named_parameters():
+#     if 'lora' in name : 
+#         param.requires_grad = True
+#         print(param.requires_grad)
 #---------------------------------------------------------------------------------------#
 # 데이터 로드 함수
 def load_json_files(directory):
@@ -93,9 +111,9 @@ def create_dataset(data):
 train_dataset = create_dataset(train_data)
 val_dataset = create_dataset(val_data)
 
-# 데이터 전처리 함수
+# 데이터 전처리 함수 -------------------------------------------------------------------------------------
 def preprocess_function(examples):
-    max_length = 512
+    max_length = 2048
     
     inputs = []
     labels = []
@@ -107,13 +125,11 @@ def preprocess_function(examples):
         ]
         
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        
         # 입력 인코딩
         encoded_input = tokenizer(prompt, max_length=max_length, padding="max_length", truncation=True)
-        
         # 레이블 인코딩
         encoded_label = tokenizer(answer, max_length=max_length, padding="max_length", truncation=True)
-        pdb.set_trace()
+        # pdb.set_trace()
         
         # 레이블에 대해 -100으로 패딩
         encoded_label["input_ids"] = [-100 if token == tokenizer.pad_token_id else token for token in encoded_label["input_ids"]]
@@ -136,25 +152,24 @@ val_tokenized = Dataset.from_dict(val_dataset).map(preprocess_function, batched=
 
 #---------------------------------------------------------------------------------------------#
 
-# 훈련 인자 설정
-training_args = TrainingArguments(
-    output_dir="./results",
-    num_train_epochs=1,
-    per_device_train_batch_size=2,
-    per_device_eval_batch_size=2,
-    gradient_accumulation_steps=8,
+# Setting Hyperparamter
+training_arguments = TrainingArguments(
+    output_dir="./results/law-gemma2-ko",
+    per_device_train_batch_size=1,
+    per_device_eval_batch_size=1,
+    gradient_accumulation_steps=2,
     optim="paged_adamw_32bit",
+    num_train_epochs=1,
     eval_strategy="steps",
-    eval_steps=0.1,
-    logging_dir="./logs",
-    logging_steps=11,
+    eval_steps=0.2,
+    logging_steps=1,
     warmup_steps=10,
     logging_strategy="steps",
     learning_rate=1e-7,
+    fp16=False,
+    bf16=False,
     group_by_length=True,
-    bf16=True,
-    # report_to="wandb",
-    run_name="gemma-2-9b-lora-bf16-0924",
+    report_to="wandb"
 )
 
 # Wandb에 하이퍼파라미터 로깅
@@ -198,21 +213,25 @@ def custom_data_collator(features):
 # 사용 예시:
 # train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=custom_data_collator)
 
-# Trainer 초기화 및 훈련
+# Setting sft parameters
 trainer = SFTTrainer(
     model=model,
     train_dataset=train_tokenized,
     eval_dataset=val_tokenized,
     peft_config=peft_config,
-    max_seq_length = 512,
+    max_seq_length= 512,
     dataset_text_field="text",
     tokenizer=tokenizer,
-    args=training_args,
-    data_collator=custom_data_collator,
+    args=training_arguments,
+    packing= False,
 )
+
+# gradient checkpointing
+model.gradient_checkpointing_enable()
 
 # 훈련 실행
 try:
+    torch.cuda.empty_cache()
     model.config.use_cache = False
     trainer.train()
 except Exception as e:
@@ -222,10 +241,6 @@ except Exception as e:
 
 # 모델 저장
 trainer.model.save_pretrained("./fine_tuned_legal_model_lora")
-
-# # LoRA 모델 병합 및 전체 모델 저장 (선택사항)
-# merged_model = model.merge_and_unload()
-# merged_model.save_pretrained("./fine_tuned_legal_model_merged")
 
 # 평가
 eval_results = trainer.evaluate()
