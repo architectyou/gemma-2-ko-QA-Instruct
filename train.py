@@ -74,6 +74,7 @@ peft_config = LoraConfig(
     target_modules=modules
 )
 
+model = prepare_model_for_kbit_training(model)
 model, tokenizer = setup_chat_format(model, tokenizer)
 model = get_peft_model(model, peft_config)
 
@@ -155,9 +156,9 @@ val_tokenized = Dataset.from_dict(val_dataset).map(preprocess_function, batched=
 # Setting Hyperparamter
 training_arguments = TrainingArguments(
     output_dir="./results/law-gemma2-ko",
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,
-    gradient_accumulation_steps=2,
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
+    gradient_accumulation_steps=8,
     optim="paged_adamw_32bit",
     num_train_epochs=1,
     eval_strategy="steps",
