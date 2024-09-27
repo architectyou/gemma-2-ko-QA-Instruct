@@ -17,20 +17,15 @@ tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=Tru
 # 원본 모델 로드
 base_model = AutoModelForCausalLM.from_pretrained(
     base_model_path,
-    attn_implementation='eager', 
-    torch_dtype=torch.bfloat16,
-    trust_remote_code=True
 )
 
-# base_model_reload, tokenizer = setup_chat_format(base_model, tokenizer)
-# PEFT 모델 로드 -> 여기서 오류나고 있음.
 model = PeftModel.from_pretrained(base_model, model_name)
 merged_model = model.merge_and_unload()
 
 print(f"Base model vocab size after resizing: {merged_model.config.vocab_size}")
 
 # 병합된 모델 저장
-output_dir = "./0924_merged-1"
+output_dir = "./0927_merged"
 merged_model.save_pretrained(output_dir, safe_serialization=True)
 tokenizer.save_pretrained(output_dir)
 

@@ -3,7 +3,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
 
-peft_model_id = "/data/test/fine_tuned_legal_model_lora"
+peft_model_id = "fine_tuned_legal_model_lora"
 base_model_id = "/data/gguf_models/ko-gemma-2-9b-it"
 
 base_model = AutoModelForCausalLM.from_pretrained(base_model_id)
